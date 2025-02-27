@@ -175,15 +175,16 @@ train_dataset=train_dataset.select(range(1000))
 
 
 #### Define the model and tokenizer
-We will use the open-source [`opt-350m`](https://huggingface.co/facebook/opt-350m) model from HuggingFace. You can find the explanation of the model [here](https://arxiv.org/abs/2205.01068) and the corresonding Github repository [here](https://github.com/facebookresearch/metaseq).
-
-The model was initially trained using a causal language modeling (CLM) approach. It is part of the same family of decoder-only models as GPT-3. Consequently, its pretraining followed a self-supervised causal language modeling objective.
+We will use the open-source [EleutherAI/gpt-neo-125m · Hugging Face model](https://huggingface.co/EleutherAI/gpt-neo-125m). GPT-Neo 125M model is a transformer model that has 125M parameters created by EleutherAI's replication of the GPT-3. GPT-Neo represents class of models.
 
 ```python
 # Load the model
-model = AutoModelForCausalLM.from_pretrained("facebook/opt-350m").to(device)
+model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-125m")
 # Load the tokenizer
-tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m", padding_side='left')
+tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125m")
+
+# set padding side left
+tokenizer.padding_side = 'left'
 ```
 
 #### Data preprocessing
@@ -272,21 +273,19 @@ instructions_torch = ListDataset(only_instructions)
 Fine-tuning the model for all the parameters could be time consuming and waste of resources. To optimize time, we'll use a parameter-efficient fine-tuning (PEFT) approach called [Low-Rank Adaptation (LoRA)](https://huggingface.co/docs/diffusers/en/training/lora) for instruction fine-tuning. First, transform the model into a PEFT-compatible version for LoRA by defining a LoraConfig object from the peft library, specifying parameters such as the LoRA rank and target modules. Then, apply the LoRA configuration to the model using `get_peft_model()`, which effectively converts it into a LoRA model.
 
 ```python
-# Define LoRA parameters
+#Parameters:
+#r: low-rank dimension
+#lora_alpha: scaling factor of LoRa
+#target_modules: Modules to apply LoRA
+#lora_dropout: Dropout rate
+#task_type: #task type which is causal language model
+
 lora_model_config = LoraConfig(
-'''
-Parameters:
-r: low-rank dimension
-lora_alpha: scaling factor of LoRa
-target_modules: Modules to apply LoRA
-lora_dropout: Dropout rate
-task_type: #task type which is causal language model
-'''
-    r=16,  
-    lora_alpha=32,  
-    target_modules=["q_proj", "v_proj"],  
-    lora_dropout=0.1,  
-    task_type=TaskType.CAUSAL_LM  
+    r=8,
+    lora_alpha=16,
+    target_modules=["q_proj", "v_proj"],
+    lora_dropout=0.1,
+    task_type=TaskType.CAUSAL_LM
 )
 
 # convert our model into a lora model
@@ -308,26 +307,37 @@ Using the masking in DataCollatorForCompletionOnlyLM we can exclude the instruct
 For the training we first define the SFTConfig, and then define the `SFTTrainer` object. The `SFTConfig` creates the parameters of the `SFTTrainer` such as number of epochs, batch size, max sequence length, etc. We then feed the `SFTConfig` createsto give training parameters to SFTTrainer.
 
 ```python
-# Define LoRA parameters
-
-#Parameters:
-#r: low-rank dimension
-#lora_alpha: scaling factor of LoRa
-#target_modules: Modules to apply LoRA
-#lora_dropout: Dropout rate
-#task_type: #task type which is causal language model
-
-lora_model_config = LoraConfig(
-    r=16,  
-    lora_alpha=32,  
-    target_modules=["q_proj", "v_proj"],  
-    lora_dropout=0.1,  
-    task_type=TaskType.CAUSAL_LM  
+# Define configuration and training parameters
+training_args = SFTConfig(
+    output_dir="/tmp",
+    num_train_epochs=3,
+    save_strategy="epoch",
+    fp16=True,
+    per_device_train_batch_size=2,  # Reduce batch size
+    per_device_eval_batch_size=2,  # Reduce batch size
+    max_seq_length=1024,
+    do_eval=True
 )
 
-# convert our model into a lora model
-model = get_peft_model(model, lora_model_config)
+# Define SFTTrainer object
+trainer = SFTTrainer(
+    model,
+    train_dataset=train_dataset,
+    eval_dataset=test_dataset,
+    formatting_func=create_promt,
+    args=training_args,
+    packing=False,
+    data_collator=collator,
+)
 ```
+
+Assign the end of token (EOS) to the tokenizer.
+
+```python
+#Assign the enf of token (EOS) to the tokenizer.
+tokenizer.pad_token = tokenizer.eos_token
+```
+
 
 Start training, save the training history to save the loss, and lastly save the model for later usage. 
 
@@ -362,7 +372,7 @@ plt.show()
 ```
 The below image shows the training loss through epochs.
 
-![lt](https://github.com/user-attachments/assets/d38a32dc-db41-440d-b37f-cfcd7b1e2dac)
+![download](https://github.com/user-attachments/assets/5d03415f-f3e0-4379-900e-3685e399447e)
 
 
 Here it is important to note that we only trained the model 3 epochs because of the insufficient resources (CPU instead of GPU).
@@ -416,13 +426,17 @@ Output:
 Define a Bash function with name 'times2' which takes one parameter and prints the value doubled.
 
 ### Output:
+ 
+
 
 times2 () {
   value=$1
   echo "$value*2 = $(($value*2))"
-} 
+}</s> 
 
-def times2(x, y):
+def times2(name):
+    print(name)
+</s>
 ```
 
 #### Test the performance with Blue Score
@@ -453,6 +467,6 @@ Output:
 0.0
 ```
 
-You can see that the fine-tuned model achieves a SacreBLEU score of 0.0. The reason why the score is too low is that we trained the model for 3 epochs only since we did run it on CPU. Therefore, the model couldn't learn and generalize well. You can use the code above to implement the instruct tuning method on LLMs.
+You can see that the fine-tuned model achieves a SacreBLEU score of 0.4. The reason why the score is too low is that we trained the model for 3 epochs only since we did run it on CPU. Therefore, the model couldn't learn and generalize well. You can use the code above to implement the instruct tuning method on LLMs.
 
 
