@@ -464,7 +464,7 @@ print(round(results_base["score"], 1))
 Output:
 
 ['score', 'counts', 'totals', 'precisions', 'bp', 'sys_len', 'ref_len']
-0.0
+0.4
 ```
 
 You can see that the fine-tuned model achieves a SacreBLEU score of 0.4. The reason why the score is too low is that we trained the model for 3 epochs only since we did run it on CPU. Therefore, the model couldn't learn and generalize well. You can use the code above to implement the instruct tuning method on LLMs.
