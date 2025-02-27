@@ -171,7 +171,7 @@ DatasetDict({
 # Since we use CPU, it is better to use a subset to save time.
 test_dataset=test_dataset.select(range(1000))
 train_dataset=train_dataset.select(range(1000))
-```python
+```
 
 
 #### Define the model and tokenizer
