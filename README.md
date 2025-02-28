@@ -194,37 +194,50 @@ Before testing the performance of the model, we need to preprocess the test data
 ```python
 # Preprocess the data and create promts
 def create_promt(dataset):
-    output_texts_1 = []
-    output_texts_2 = []
-    for i in range(len(dataset['instruction'])):
-      # create output with response
-      text_1 = (
-            f"### Instruction:\n{dataset['instruction'][i]}"
-            f"\n\n### Output:\n{dataset['output'][i]}</s>"
-        )
-      # create output without response
-      text_2 = (
+  output_texts_1 = []
+  for i in range(len(dataset['instruction'])):
+    # create output with response
+    text_1 = (
           f"### Instruction:\n{dataset['instruction'][i]}"
-          f"\n\n### Output:\n"
+          f"\n\n### Output:\n{dataset['output'][i]}</s>"
       )
+
     output_texts_1.append(text_1)
+
+  return output_texts_1
+
+def create_promt_empty_response(dataset):
+
+  output_texts_2 = []
+  for i in range(len(dataset['instruction'])):
+
+    # create output without response
+    text_2 = (
+        f"### Instruction:\n{dataset['instruction'][i]}"
+        f"\n\n### Output:\n"
+    )
+
     output_texts_2.append(text_2)
-    return output_texts_1, output_texts_2
+  return output_texts_2
 
 # tokenize the processed data
 expected_outputs = []
-instructions_with_responses, only_instructions = create_promt(test_dataset)
+instructions_with_responses = create_promt(test_dataset)
+only_instructions = create_promt_empty_response(test_dataset)
+
 for instruction_response, instruction in tqdm(zip(instructions_with_responses, only_instructions), total=len(instructions_with_responses)):
-    
+
     tokenized_response = tokenizer(instruction_response, return_tensors="pt", max_length=1024, truncation=True, padding=False)
     tokenized_instruction = tokenizer(instruction, return_tensors="pt")
+
     # Extract the expected output by decoding the difference
     expected_output = tokenizer.decode(
-        tokenized_response['input_ids'][0][len(tokenized_instruction['input_ids'][0])-1:], 
+        tokenized_response['input_ids'][0][len(tokenized_instruction['input_ids'][0])-1:],
         skip_special_tokens=True
     )
-    
+
     expected_outputs.append(expected_output)
+
 ```
 
 Print the processed results
